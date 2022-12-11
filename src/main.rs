@@ -32,8 +32,12 @@ fn main() {
         println!("After {}:\n{}\n", m.to_string(), pos.to_string());
     }
 
-    let mut position = Position::from_fen("r1b1kb1r/3p1ppp/p1n1p1n1/qp1N2B1/4P3/1B3N2/PP3PPP/R2QR1K1 b kq - 7 11".to_string());
-    println!("From FEN: \n\n{}", position.expect("Loading FEN failed!").to_string());
+    let mut position = Position::from_fen("r1b1kb1r/3p1ppp/p1n1p1n1/qp1N2B1/4P3/1B3N2/PP3PPP/R2QR1K1 b kq - 7 11".to_string()).expect("Loading FEN failed!");
+    println!("From FEN: \n\n{}", position.to_string());
+
+    for m in position.get_all_legal_moves() {
+        print!("{}, ", m.to_string());
+    }
 
     // TODO: When castling the king isn't properly removed.
 }

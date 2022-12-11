@@ -222,7 +222,7 @@ impl Position {
                         fi += c.to_digit(10).unwrap() as u8;
                     } else {
                         let piece_idx = string_to_piece(c) + NUM_PIECE_TYPES * if c.is_uppercase() { WHITE } else { BLACK };
-                        
+
                         bbs[piece_idx as usize] |= bb_ops::index_lookup_mask((7 - ri as u8) * 8 + fi);
                         fi += 1;
                     }
@@ -526,7 +526,7 @@ impl Position {
     fn get_pawn_moves_bb(&self, color: u8, idx: u8) -> u64 {
         let moves = pawns::get_pawn_moves(color, idx) & !self.get_all_blockers(color);
         let captures = pawns::get_pawn_captures(color, idx) & self.get_opponent_blockers(color);
-        let double_steps = pawns::get_pawn_double_steps(color, idx) & self.get_all_blockers(color);
+        let double_steps = pawns::get_pawn_double_steps(color, idx) & !self.get_all_blockers(color);
 
         return moves | captures | double_steps;
     }
