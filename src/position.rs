@@ -1,4 +1,5 @@
 use crate::bb_ops;
+use crate::bb_ops::coords_to_index;
 use crate::rooks;
 use crate::bishops;
 use crate::knights;
@@ -36,11 +37,11 @@ const BLACK_BISHOPS_INIT: u64 = 0x2400000000000000;
 const WHITE_ROOKS_INIT: u64 = 0x81;
 const BLACK_ROOKS_INIT: u64 = 0x8100000000000000;
 
-const WHITE_QUEENS_INIT: u64 = 0x10;
-const BLACK_QUEENS_INIT: u64 = 0x1000000000000000;
+const WHITE_KINGS_INIT: u64 = 0x10;
+const BLACK_KINGS_INIT: u64 = 0x1000000000000000;
 
-const WHITE_KINGS_INIT: u64 = 0x8;
-const BLACK_KINGS_INIT: u64 = 0x800000000000000;
+const WHITE_QUEENS_INIT: u64 = 0x8;
+const BLACK_QUEENS_INIT: u64 = 0x800000000000000;
 
 
 /// Given a color return the opponent's color.
@@ -145,26 +146,41 @@ pub fn string_to_piece(c: char) -> u8 {
     };
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Position {
     pub turn: u8,
     piece_bbs: [u64; 12],
     qs_castle: [bool; 2],
     ks_castle: [bool; 2],
-    en_passant: Option<u8>
+    en_passant: Option<u8>,
+    legal_moves: Option<Vec<Move>>
 }
 
 impl Position {
+    /// Constructors ///
     pub fn empty() -> Position {
         return Position {
             turn: WHITE,
             piece_bbs: [0; 12],
             qs_castle: [true, true],
             ks_castle: [true, true],
-            en_passant: None
+            en_passant: None,
+            legal_moves: None
         };
     }
 
+    pub fn new(turn: u8, piece_bbs: [u64; 12], qs_castle: [bool; 2], ks_castle: [bool; 2], en_passant: Option<u8>) -> Position {
+        return Position {
+            turn: turn,
+            piece_bbs: piece_bbs,
+            qs_castle: qs_castle,
+            ks_castle: ks_castle,
+            en_passant: en_passant,
+            legal_moves: None
+        };
+    }
+
+    /// Construct a Position object encoding the starting position in regular chess.
     pub fn starting_position() -> Position {
         return Position {
             turn: WHITE,
@@ -184,38 +200,77 @@ impl Position {
             ],
             qs_castle: [true, true],
             ks_castle: [true, true],
-            en_passant: None
+            en_passant: None,
+            legal_moves: None
         };
     }
 
-    pub fn new(bbs: [u64; 12]) -> Position {
-        return Position {
-            turn: WHITE,
-            piece_bbs: bbs,
-            qs_castle: [true, true],
-            ks_castle: [true, true],
-            en_passant: None
-        };
+    /// Construct a Position object that represents the position encoded by the given FEN.
+    pub fn from_fen(fen: String) -> Option<Position> {
+        let mut fields = fen.split(" ");
+
+        // Parse the first part of the FEN that encoded the piece placement in the position.
+        let ranks = fields.next().map(|rs| rs.split("/"));
+        let piece_bbs = ranks.map(|rs| {
+            let mut bbs = [0; 12];
+
+            for (ri, r) in rs.enumerate() {
+                let mut fi: u8 = 0;
+
+                for c in r.chars() {
+                    if c.is_digit(10) {
+                        fi += c.to_digit(10).unwrap() as u8;
+                    } else {
+                        let piece_idx = string_to_piece(c) + NUM_PIECE_TYPES * if c.is_uppercase() { WHITE } else { BLACK };
+                        
+                        bbs[piece_idx as usize] |= bb_ops::index_lookup_mask((7 - ri as u8) * 8 + fi);
+                        fi += 1;
+                    }
+                }
+            }
+
+            return bbs;
+         });
+
+        // Only allow "W", "w", "S", "s" to define what turn it is.
+        let turn = fields.next().map(|s| s.to_lowercase())
+                                .filter(|s| *s == "w" || *s == "b")
+                                .map(|s| if s == "w" { WHITE } else { BLACK });
+
+        // Parse the castling rights for this position.
+        let castling = fields.next().map(|s| {
+            let mut ks_castle = [s.contains("K"), s.contains("k")];
+            let mut qs_castle = [s.contains("Q"), s.contains("q")];
+
+            return (ks_castle, qs_castle);
+        });
+
+        // Parse a potential square to capture en passant.
+        let en_passant = fields.next().and_then(|s| string_to_coords(s.to_string()))
+                                                  .map(|(rk, fl)| coords_to_index(rk, fl));
+
+        return turn.zip(piece_bbs).zip(castling).map(| ((turn, piece_bbs), castling) | {
+            return Position::new(turn, piece_bbs, castling.1, castling.0, en_passant);
+        });
     }
 
-    pub fn from_fen(fen: String) -> Position {
-        let mut board = Position::empty();
-        
-        return board;
-    }
+    /// Board manipulation functions ///
 
+    /// Add a piece of a given type at the square given by the index.
     fn add_piece(&mut self, color: u8, piece_type: u8, idx: u8) {
         let piece_idx = color * NUM_PIECE_TYPES + piece_type;
 
         self.piece_bbs[piece_idx as usize] = bb_ops::set_idx_bit(self.piece_bbs[piece_idx as usize], idx);
     }
 
-    fn remove_piece(&mut self, color: u8, piece_type: u8, idx: u8) {
-        let piece_idx = color * NUM_PIECE_TYPES + piece_type;
-
-        self.piece_bbs[piece_idx as usize] = bb_ops::erase_idx_bit(self.piece_bbs[piece_idx as usize], idx);
+    /// Remove a piece from the square given by the index.
+    fn remove_piece(&mut self, idx: u8) {
+        for piece_idx in 0..2*NUM_PIECE_TYPES {
+            self.piece_bbs[piece_idx as usize] = bb_ops::erase_idx_bit(self.piece_bbs[piece_idx as usize], idx);
+        }
     }
 
+    /// Change whose turn it is by flipping the color.
     pub fn flip_turn(&mut self) {
         self.turn = flip_color(self.turn);
     }
@@ -228,7 +283,7 @@ impl Position {
         match m {
             Move::StandardMove(piece_type, origin, target, captures, promotes_to, en_passant) => {
                 // Remove the moved piece from the original square.
-                position.remove_piece(position.turn, piece_type, origin);
+                position.remove_piece(origin);
 
                 // Check if the piece to put at the target square is identical to the one that originally 
                 // was on the origin square.
@@ -243,7 +298,7 @@ impl Position {
                 // Remove the captured piece from the target square.
                 match captures {
                     Some(t) => {
-                        position.remove_piece(flip_color(position.turn), t, target);
+                        position.remove_piece(target);
                     }
                     _       => ()
                 };
@@ -252,7 +307,7 @@ impl Position {
             },
             Move::EnPassant(origin, target) => {
                 // Remove the capturing pawn from the original square.
-                position.remove_piece(position.turn, PAWN, origin);
+                position.remove_piece(origin);
 
                 // Add the capturing pawn to the new (target) square.
                 position.add_piece(position.turn, PAWN, target);
@@ -265,7 +320,7 @@ impl Position {
                 };
 
                 // Remove the captured pawn.
-                position.remove_piece(flip_color(position.turn), PAWN, captured_square);
+                position.remove_piece(captured_square);
 
                 // No en passant possible after this move.
                 position.en_passant = None;
@@ -283,11 +338,11 @@ impl Position {
                 let e = f - 1;
 
                 // Move the king to his new square.
-                position.remove_piece(WHITE, KING, e);
+                position.remove_piece(e);
                 position.add_piece(WHITE, KING, g);
 
                 // Move the queen to his new square.
-                position.remove_piece(WHITE, ROOK, h);
+                position.remove_piece(h);
                 position.add_piece(WHITE, ROOK, f);
 
                 // Disallow future castling.
@@ -309,11 +364,11 @@ impl Position {
                 let a = c - 2;
 
                 // Move the king to his new square.
-                position.remove_piece(WHITE, KING, e);
+                position.remove_piece(e);
                 position.add_piece(WHITE, KING, c);
 
                 // Move the queen to his new square.
-                position.remove_piece(WHITE, ROOK, a);
+                position.remove_piece(a);
                 position.add_piece(WHITE, ROOK, d);
 
                 position.remove_castling_rights(position.turn);
@@ -354,15 +409,10 @@ impl Position {
 
     /// Returns true if the king with the given color is checked.
     pub fn is_checked(&self, color: u8) -> bool {
-        for king in bb_ops::idx_bitscan(self.piece_bbs[(color * NUM_PIECE_TYPES + KING) as usize]) {
-            let attacked_squares = self.get_all_attack_bitboard(flip_color(color));
+        let attacked_squares = self.get_all_attack_bitboard(flip_color(color));
+        let king_bb = self.piece_bbs[(color * NUM_PIECE_TYPES + KING) as usize];
 
-            if bb_ops::index_lookup(attacked_squares, king) {
-                return true;
-            }
-        }
-
-        return false;
+        return attacked_squares & king_bb != 0;
     }
 
     fn exposes_friendly_king(&mut self, m: Move) -> bool {
@@ -430,7 +480,7 @@ impl Position {
     }
 
     /// Checks if a given square is occupied by a piece of a given color.
-    pub fn get_is_occupied_by(&self, color: u8, sq: u8) -> bool {
+    pub fn is_occupied_by(&self, color: u8, sq: u8) -> bool {
         return bb_ops::index_lookup(self.get_all_blockers(color), sq);
     }
 
@@ -593,13 +643,13 @@ impl Position {
         return bb_ops::idx_bitscan(attacker_bb & self.get_piece_bitboard(color, piece_type))
     }
 
-    /// Finds all pieces of a given color and type that can mvoe to a given square.
+    /// Finds all pieces of a given color and type that can move to a given square.
     fn can_move_to(&self, color: u8, piece_type: u8, sq: u8) -> Vec<u8> {
         return match piece_type {
             PAWN => {
                 let (rk, fl) = bb_ops::index_to_coords(sq);
 
-                if self.get_is_occupied_by(flip_color(color), sq) {
+                if self.is_occupied_by(flip_color(color), sq) {
                     return self.get_attackers(color, piece_type, sq);
                 } else {
                     let mut occupiers = bb_ops::idx_bitscan(pawns::get_pawn_moves(flip_color(color), sq) & self.get_piece_bitboard(color, piece_type));
@@ -608,7 +658,7 @@ impl Position {
                         WHITE => bb_ops::coords_to_index(1, fl),
                         _     => bb_ops::coords_to_index(6, fl)
                     };
-                    print!("rk: {}", rk);
+
                     let double_step_rank = 3 + (color * 1);
 
                     if rk == double_step_rank {
