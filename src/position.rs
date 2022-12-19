@@ -752,8 +752,8 @@ impl Position {
         return self.get_all_piece_attacks_bb(color, KING);
     }
 
-    /// Returns a list of all moves a pawn at a specific square can do.
-    pub fn get_pawn_moves(&mut self, color: u8, idx: u8) -> Vec<Move> {
+    /// Computes all legal moves for a pawn of a given color at a given square. 
+    fn get_pawn_moves(&mut self, color: u8, idx: u8) -> Vec<Move> {
         let move_bb = self.get_piece_moves_bb(color, idx, PAWN);
         let mut moves = Vec::new();
         
@@ -808,23 +808,8 @@ impl Position {
         return moves;
     }
 
-    pub fn get_knight_moves(&mut self, color: u8, idx: u8) -> Vec<Move> {
-        return self.get_piece_moves(color, idx, KNIGHT);
-    }
-    
-    pub fn get_bishop_moves(&mut self, color: u8, idx: u8) -> Vec<Move> {
-        return self.get_piece_moves(color, idx, BISHOP);
-    }
-
-    pub fn get_rook_moves(&mut self, color: u8, idx: u8) -> Vec<Move> {
-        return self.get_piece_moves(color, idx, ROOK);
-    }
-
-    pub fn get_queen_moves(&mut self, color: u8, idx: u8) -> Vec<Move> {
-        return self.get_piece_moves(color, idx, QUEEN)
-    }
-
-    pub fn get_king_moves(&self, color: u8, idx: u8) -> Vec<Move> {
+    /// Computes all legal moves for a King of a given color at a given square. 
+    fn get_king_moves(&self, color: u8, idx: u8) -> Vec<Move> {
         let move_bb = self.get_piece_moves_bb(color, idx, KING);
         let mut moves = Vec::new();
 
@@ -856,6 +841,7 @@ impl Position {
         return moves;
     }
 
+    /// Computes all legal moves of a piece of a given color and type on a given square.
     pub fn get_piece_moves(&mut self, color: u8, idx: u8, piece_type: u8) -> Vec<Move> {
         match piece_type {
             PAWN => self.get_pawn_moves(color, idx),
