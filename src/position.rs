@@ -7,6 +7,7 @@ use crate::kings;
 use crate::pawns;
 use crate::moves::{Move};
 
+use lazy_static::lazy_static;
 use regex::{Regex, Error, RegexSet};
 
 pub const RANKS: u8 = 8;
@@ -43,6 +44,11 @@ const BLACK_KINGS_INIT: u64 = 0x1000000000000000;
 const WHITE_QUEENS_INIT: u64 = 0x8;
 const BLACK_QUEENS_INIT: u64 = 0x800000000000000;
 
+lazy_static! {
+    static ref STD_MOVE_PATTERN: Regex = Regex::new(r"(?P<type>[kqrbn])?(?P<origin>[a-h]?[1-8]?)?(?P<captures>x)?(?P<target>[a-h][1-8])(?P<promotes>=[qrbn])?[+#]?").unwrap();
+    static ref LCASTLE_PATTERN: Regex = Regex::new(r"o-o-o|0-0-0").unwrap();
+    static ref SCASTLE_PATTERN: Regex = Regex::new(r"o-o|0-0").unwrap();
+}
 
 /// Given a color return the opponent's color.
 pub fn flip_color(color: u8) -> u8 {
@@ -292,16 +298,16 @@ impl Position {
                     _       => piece_type
                 };
 
-                // Add the piece to the target square.
-                position.add_piece(position.turn, tgt_type, target);
-
                 // Remove the captured piece from the target square.
                 match captures {
-                    Some(t) => {
+                    Some(_) => {
                         position.remove_piece(target);
                     }
                     _       => ()
                 };
+
+                // Add the piece to the target square.
+                position.add_piece(position.turn, tgt_type, target);
 
                 position.en_passant = en_passant;
             },
@@ -865,10 +871,12 @@ impl Position {
         }        
     }
 
+    /// Computes all legal moves in this position for the player whose turn it is.
     pub fn get_all_legal_moves(&mut self) -> Vec<Move> {
         return self.get_all_moves(self.turn);
     }
 
+    /// Computes all legal moves for the player of the given color.
     pub fn get_all_moves(&mut self, color: u8) -> Vec<Move> {
         let mut moves: Vec<Move> = Vec::new();
 
@@ -879,6 +887,7 @@ impl Position {
         return moves;
     }
 
+    /// Computes all moves possible for a given piece type and color.
     pub fn get_all_piece_moves(&mut self, color: u8, piece_type: u8) -> Vec<Move> {
         let pieces = self.get_piece_indices(color, piece_type);
         let mut moves: Vec<Move> = Vec::new();
@@ -890,19 +899,29 @@ impl Position {
         return moves;
     }
 
+    /// Given a string representing a move, return the corresponding move.
     pub fn string_to_move(&self, string: &str) -> Option<Move> {
+        // Convert the string into a lower case string.
         let lower_s = string.to_lowercase();
         let string = lower_s.as_str();
 
-        let std_move_pattern = Regex::new(r"(?P<type>[kqrbn])?(?P<origin>[a-h]?[1-8]?)?(?P<captures>x)?(?P<target>[a-h][1-8])(?P<promotes>=[qrbn])?[+#]?").unwrap();
-        let long_castle_pattern = Regex::new(r"o-o-o|0-0-0").unwrap();
-        let short_castle_pattern = Regex::new(r"o-o|0-0").unwrap();
+        // Check if the string satisfies the notation rules of a standard chess move.
+        let mv = STD_MOVE_PATTERN.captures(string).map(|m| {
+            // Extract the piece type encoded in the notation by first getting the character 
+            // and then decoding it to a piece type.
+            let piece_type = m.name("type").and_then(|m| m.as_str().chars().nth(0))
+                                               .map_or(PAWN, |m| string_to_piece(m));
 
-        let mv = std_move_pattern.captures(string).map(|m| {
-            let piece_type = m.name("type").and_then(|m| m.as_str().chars().nth(0)).map_or(PAWN, |m| string_to_piece(m));
+            
+            // Extract the target square and encode it as a number between 0 and 64.
             let target = m.name("target").and_then(|m| string_to_index(String::from(m.as_str()))).unwrap();
 
-            let origin = self.can_move_to(self.turn, piece_type, target)[0];
+            // The list of pieces that could possibly move to the target square.
+            let candidates = self.can_move_to(self.turn, piece_type, target);
+
+            let origin = m.name("origin").and_then(|m| string_to_index(String::from(m.as_str())))
+                                             .map_or_else(|| *candidates.get(0).unwrap(), |idx| idx);
+
             let captures = m.name("captures").and_then(|_| self.get_piece_at(flip_color(self.turn), target));
 
 
@@ -911,8 +930,12 @@ impl Position {
             return Move::StandardMove(piece_type, origin, target, captures, promotes, None)
         });
 
-        return mv.or(short_castle_pattern.captures(string).map(|_| Move::ShortCastle))
-                 .or(long_castle_pattern.captures(string).map(|_| Move::LongCastle));
+        return mv.or(SCASTLE_PATTERN.captures(string).map(|_| Move::ShortCastle))
+                 .or(LCASTLE_PATTERN.captures(string).map(|_| Move::LongCastle));
+    }
+
+    pub fn move_to_string(&self, m: Move) -> &str {
+        return "foo";
     }
 }
 
