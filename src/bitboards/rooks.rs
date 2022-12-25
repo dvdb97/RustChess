@@ -1,4 +1,4 @@
-use crate::bb_ops;
+use crate::bitboards::bb_ops;
 
 /// Computes all squares attacked by a rook on the given square
 /// by taking all possible blockers in consideration. Returns a attack

@@ -1,4 +1,4 @@
-use crate::bb_ops;
+use crate::bitboards::bb_ops;
 use std::cmp;
 
 

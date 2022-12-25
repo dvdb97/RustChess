@@ -1,16 +1,12 @@
+mod bitboards;
+mod position;
+mod moves;
+
 use std::env;
 
 use crate::position::Position;
+use crate::bitboards::patterns;
 
-mod bb_ops;
-mod position;
-mod patterns;
-mod rooks;
-mod bishops;
-mod knights;
-mod kings;
-mod moves;
-mod pawns;
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");

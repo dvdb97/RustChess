@@ -1,10 +1,5 @@
-use crate::bb_ops;
-use crate::bb_ops::coords_to_index;
-use crate::rooks;
-use crate::bishops;
-use crate::knights;
-use crate::kings;
-use crate::pawns;
+use crate::bitboards::{bb_ops, rooks, bishops, knights, kings, pawns};
+use crate::bitboards::bb_ops::coords_to_index;
 use crate::moves::{Move};
 
 use lazy_static::lazy_static;
@@ -909,21 +904,24 @@ impl Position {
         let mv = STD_MOVE_PATTERN.captures(string).map(|m| {
             // Extract the piece type encoded in the notation by first getting the character 
             // and then decoding it to a piece type.
-            let piece_type = m.name("type").and_then(|m| m.as_str().chars().nth(0))
-                                               .map_or(PAWN, |m| string_to_piece(m));
+            let piece_type = m.name("type")
+                .and_then(|m| m.as_str().chars().nth(0))
+                .map_or(PAWN, |m| string_to_piece(m));
 
             
             // Extract the target square and encode it as a number between 0 and 64.
-            let target = m.name("target").and_then(|m| string_to_index(String::from(m.as_str()))).unwrap();
+            let target = m.name("target")
+                .and_then(|m| string_to_index(String::from(m.as_str()))).unwrap();
 
             // The list of pieces that could possibly move to the target square.
             let candidates = self.can_move_to(self.turn, piece_type, target);
 
-            let origin = m.name("origin").and_then(|m| string_to_index(String::from(m.as_str())))
-                                             .map_or_else(|| *candidates.get(0).unwrap(), |idx| idx);
+            let origin = m.name("origin")
+                .and_then(|m| string_to_index(String::from(m.as_str())))
+                .map_or_else(|| *candidates.get(0).unwrap(), |idx| idx);
 
-            let captures = m.name("captures").and_then(|_| self.get_piece_at(flip_color(self.turn), target));
-
+            let captures = m.name("captures")
+                .and_then(|_| self.get_piece_at(flip_color(self.turn), target));
 
             let promotes = None; //m.name("promotes").map(|m| string_to_piece(m.as_str().chars().nth(1).unwrap()));
 
